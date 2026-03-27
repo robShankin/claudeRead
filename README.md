@@ -9,9 +9,10 @@ Raw Claude Code `.jsonl` session files are useful, but they are not pleasant to 
 - Single-file Python tool
 - Works on individual sessions, whole directories, and glob patterns
 
-![Transcript preview](assets/screenshots/transcript.png)
-
-*Transcript output with timestamps, tool calls, token usage, and optional verbose tool results.*
+| Transcript Preview |
+|---|
+| ![Transcript preview](assets/screenshots/transcript.png) |
+| *Transcript output with timestamps, tool calls, token usage, and optional verbose tool results.* |
 
 ## Quick Start
 
@@ -40,9 +41,10 @@ python3 reader.py ~/.claude/projects/-Users-you-myproject/abc123.jsonl --stdout
 - Per-session token totals, estimated cost, and tool frequency
 - Batch conversion and directory listing for browsing many sessions
 
-![Session summary preview](assets/screenshots/session-summary.png)
-
-*Session summaries show duration, turns, token usage, estimated cost, and tool frequency at a glance.*
+| Session Summary Preview |
+|---|
+| ![Session summary preview](assets/screenshots/session-summary.png) |
+| *Session summaries show duration, turns, token usage, estimated cost, and tool frequency at a glance.* |
 
 ## Prerequisites
 
