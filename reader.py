@@ -220,17 +220,21 @@ def _order_by_parent_chain(records):
     while queue:
         r = queue.pop(0)
         uid = r.get('uuid')
-        if uid in visited:
+        visit_key = uid if uid is not None else id(r)
+        if visit_key in visited:
             continue
-        visited.add(uid)
+        visited.add(visit_key)
         ordered.append(r)
-        next_children = sorted(
-            children.get(uid, []),
-            key=lambda r: r.get('timestamp', '')
-        )
-        for child in next_children:
-            if child.get('uuid') not in visited:
-                queue.insert(0, child)
+        if uid is not None:  # children.get(None) returns roots, not children of this record
+            next_children = sorted(
+                children.get(uid, []),
+                key=lambda r: r.get('timestamp', '')
+            )
+            for child in next_children:
+                child_uid = child.get('uuid')
+                child_key = child_uid if child_uid is not None else id(child)
+                if child_key not in visited:
+                    queue.insert(0, child)
 
     # Safety net: append anything not reached by the chain
     reached = {r.get('uuid') for r in ordered}
@@ -444,8 +448,10 @@ def render_session(parsed, verbose=False, thinking=False, tail=None, head=None, 
         active_flags.append(f'`--head {head}`')
     flags_str = f'**Flags:** {", ".join(active_flags)}  ' if active_flags else '**Flags:** none  '
 
+    generated_at = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
     for line in ['# Claude Code Session', '']:
         _write(line)
+    _write(f'*Generated: {generated_at}*  ')
     if session_id:
         _write(f'**Session:** `{session_id}`  ')
     if cwd:
