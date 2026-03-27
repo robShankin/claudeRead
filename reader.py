@@ -194,7 +194,7 @@ def write_output(content, stem, output_dir):
 def parse_session(jsonl_path):
     """Load and parse a JSONL session file. Returns a structured dict."""
     raw = []
-    with open(jsonl_path, 'r') as f:
+    with open(jsonl_path, 'r', encoding='utf-8', errors='replace') as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -485,7 +485,7 @@ def convert(jsonl_path, verbose=False, thinking=False):
 def list_sessions(directory):
     """Recursively find and summarise all .jsonl sessions in a directory."""
     paths = []
-    for root, _, files in os.walk(directory):
+    for root, _, files in os.walk(directory, followlinks=False):
         for fname in files:
             if fname.endswith('.jsonl'):
                 paths.append(os.path.join(root, fname))
