@@ -116,6 +116,15 @@ Prints a table of all sessions found recursively — filename, date, duration, t
 python3 reader.py "~/.claude/projects/-Users-you-myproject/*.jsonl"
 ```
 
+### Limit output for large sessions
+
+```bash
+python3 reader.py abc123.jsonl --tail 20   # last 20 turns only
+python3 reader.py abc123.jsonl --head 20   # first 20 turns only
+```
+
+Useful when a session is very long. The output file will include a note showing how many turns were omitted. Token totals and cost in the summary still reflect the **full session**, not just the visible turns.
+
 ### Combine flags
 
 ```bash

@@ -7,6 +7,8 @@ Usage:
     python3 reader.py <session.jsonl> --stdout         # prints to terminal instead
     python3 reader.py <session.jsonl> --verbose        # includes full tool results
     python3 reader.py <session.jsonl> --thinking       # includes thinking blocks
+    python3 reader.py <session.jsonl> --tail 20        # show only last N turns
+    python3 reader.py <session.jsonl> --head 20        # show only first N turns
     python3 reader.py <directory>                      # batch convert all .jsonl files
     python3 reader.py <directory> --list               # list sessions in directory (recursive)
     python3 reader.py "glob/pattern/*.jsonl"           # batch convert by glob
@@ -176,7 +178,7 @@ def fmt_duration(seconds):
     return f'{s}s'
 
 
-def write_output(content, stem, output_dir):
+def resolve_output_path(stem, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     path = os.path.join(output_dir, stem + '.md')
     if os.path.exists(path):
@@ -184,8 +186,15 @@ def write_output(content, stem, output_dir):
         while os.path.exists(os.path.join(output_dir, f'{stem}-{n:02d}.md')):
             n += 1
         path = os.path.join(output_dir, f'{stem}-{n:02d}.md')
-    with open(path, 'w') as f:
-        f.write(content)
+    return path
+
+
+def write_output(jsonl_path, output_dir, verbose=False, thinking=False, tail=None, head=None):
+    """Parse and stream-render a session directly to a file."""
+    stem = os.path.splitext(os.path.basename(jsonl_path))[0]
+    path = resolve_output_path(stem, output_dir)
+    with open(path, 'w', encoding='utf-8') as f:
+        convert_to_file(jsonl_path, f, verbose=verbose, thinking=thinking, tail=tail, head=head)
     return path
 
 
@@ -330,44 +339,104 @@ def parse_session(jsonl_path):
 
 # ── Core: render ─────────────────────────────────────────────────────────────
 
-def render_session(parsed, verbose=False, thinking=False, flags=None):
-    """Render a parsed session dict to a Markdown string."""
+def render_session(parsed, verbose=False, thinking=False, tail=None, head=None, out=None):
+    """Render a parsed session dict, writing lines to `out` (a file-like object or list)."""
+    if out is None:
+        out = []
+    _write = out.append if isinstance(out, list) else lambda line: out.write(line + '\n')
+
     deduped      = parsed['deduped']
     tool_results = parsed['tool_results']
     session_id   = parsed['session_id']
     cwd          = parsed['cwd']
     version      = parsed['version']
 
-    out = []
-
+    # Collect renderable turns for --tail / --head filtering
+    renderable = []
     for r in deduped:
         rtype = r.get('type')
-        ts    = fmt_time(r.get('timestamp', ''))
-
         if rtype == 'system':
             continue
-
         if rtype == 'user':
             content = r.get('message', {}).get('content', '')
             if is_tool_result_only(content):
                 continue
-            text = strip_command_tags(extract_text(content))
-            if not text:
+            if not strip_command_tags(extract_text(content)):
                 continue
+        elif rtype == 'assistant':
+            msg = r.get('message', {})
+            content = msg.get('content', [])
+            has_visible = any(
+                isinstance(b, dict) and b.get('type') in ('text', 'tool_use', 'thinking')
+                for b in content
+            )
+            if not has_visible:
+                continue
+        renderable.append(r)
+
+    truncated_note = None
+    total_turns = len(renderable)
+    if tail is not None and tail < total_turns:
+        renderable = renderable[-tail:]
+        truncated_note = f'*Showing last {tail} of {total_turns} turns. Omit `--tail` to see all.*'
+    elif head is not None and head < total_turns:
+        renderable = renderable[:head]
+        truncated_note = f'*Showing first {head} of {total_turns} turns. Omit `--head` to see all.*'
+
+    # ── Header ───────────────────────────────────────────────────────────────
+    active_flags = []
+    if verbose:
+        active_flags.append('`--verbose`')
+    if thinking:
+        active_flags.append('`--thinking`')
+    if tail is not None:
+        active_flags.append(f'`--tail {tail}`')
+    if head is not None:
+        active_flags.append(f'`--head {head}`')
+    flags_str = f'**Flags:** {", ".join(active_flags)}  ' if active_flags else '**Flags:** none  '
+
+    for line in ['# Claude Code Session', '']:
+        _write(line)
+    if session_id:
+        _write(f'**Session:** `{session_id}`  ')
+    if cwd:
+        _write(f'**Working directory:** `{cwd}`  ')
+    if version:
+        _write(f'**Claude Code version:** `{version}`  ')
+    _write('')
+    _write(flags_str)
+    _write('*Token key: `Xin` = new input · `Xout` = output · `X↩` = cache read*')
+    _write('')
+    if truncated_note:
+        _write(truncated_note)
+        _write('')
+    _write('***')
+    _write('')
+
+    for r in renderable:
+        rtype = r.get('type')
+        ts    = fmt_time(r.get('timestamp', ''))
+
+        rtype = r.get('type')
+        ts    = fmt_time(r.get('timestamp', ''))
+
+        if rtype == 'user':
+            content = r.get('message', {}).get('content', '')
+            text = strip_command_tags(extract_text(content))
             first, _, rest = text.partition('\n')
-            out.append('***')
-            out.append(f'**User** `{ts}` — {first}')
+            _write('***')
+            _write(f'**User** `{ts}` — {first}')
             if rest.strip():
-                out.append('')
-                out.append(rest.strip())
+                _write('')
+                _write(rest.strip())
 
         elif rtype == 'assistant':
             msg     = r.get('message', {})
             content = msg.get('content', [])
             usage   = msg.get('usage', {})
 
-            text_parts    = []
-            tool_parts    = []  # list of (formatted_str, is_error)
+            text_parts     = []
+            tool_parts     = []
             thinking_parts = []
             turn_has_error = False
 
@@ -396,39 +465,38 @@ def render_session(parsed, verbose=False, thinking=False, flags=None):
             c = usage.get('cache_read_input_tokens', 0)
 
             error_flag = ' **[!]**' if turn_has_error else ''
-            out.append('***')
+            _write('***')
 
-            # Thinking blocks first (when enabled)
             if thinking_parts:
                 for tp in thinking_parts:
-                    out.append(f'> *{tp}*')
-                out.append('')
+                    _write(f'> *{tp}*')
+                _write('')
 
             if text_parts:
                 first, _, rest = text_parts[0].partition('\n')
-                out.append(f'**Assistant** `{ts}`{error_flag} — {first}')
+                _write(f'**Assistant** `{ts}`{error_flag} — {first}')
                 if rest.strip():
-                    out.append('')
-                    out.append(rest.strip())
+                    _write('')
+                    _write(rest.strip())
                 for text in text_parts[1:]:
-                    out.append('')
-                    out.append(text)
+                    _write('')
+                    _write(text)
             else:
                 first_fmt, _ = tool_parts[0]
-                out.append(f'**Assistant** `{ts}`{error_flag} — {first_fmt}')
+                _write(f'**Assistant** `{ts}`{error_flag} — {first_fmt}')
                 tool_parts = tool_parts[1:]
 
             for fmt, _ in tool_parts:
-                out.append(f'— {fmt}')
+                _write(f'— {fmt}')
 
             if usage:
-                out.append(f'*{i}in/{o}out/{c}↩*')
+                _write(f'*{i}in/{o}out/{c}↩*')
 
     # ── Summary block ────────────────────────────────────────────────────────
-    out.append('***')
-    out.append('')
-    out.append('## Session Summary')
-    out.append('')
+    _write('***')
+    _write('')
+    _write('## Session Summary')
+    _write('')
 
     rows = []
     if parsed['duration_secs'] is not None:
@@ -444,40 +512,31 @@ def render_session(parsed, verbose=False, thinking=False, flags=None):
 
     col_w = max(len(r[0]) for r in rows)
     for label, value in rows:
-        out.append(f'| {label:<{col_w}} | {value} |')
+        _write(f'| {label:<{col_w}} | {value} |')
 
-    out.append('')
-    out.append('*Cost estimate based on Sonnet 4.x pricing. Adjust `_COST_*` constants at the top of reader.py for other models.*')
+    _write('')
+    _write('*Cost estimate based on Sonnet 4.x pricing. Adjust `_COST_*` constants at the top of reader.py for other models.*')
 
     if parsed['tool_use_counts']:
-        out.append('')
-        out.append('**Tool call frequency:** ' + ', '.join(
+        _write('')
+        _write('**Tool call frequency:** ' + ', '.join(
             f'{name} ×{count}'
             for name, count in sorted(parsed['tool_use_counts'].items(), key=lambda x: -x[1])
         ))
 
-    # ── Header ───────────────────────────────────────────────────────────────
-    header = ['# Claude Code Session', '']
-    if session_id:
-        header.append(f'**Session:** `{session_id}`  ')
-    if cwd:
-        header.append(f'**Working directory:** `{cwd}`  ')
-    if version:
-        header.append(f'**Claude Code version:** `{version}`  ')
-    active_flags = []
-    if verbose:
-        active_flags.append('`--verbose`')
-    if thinking:
-        active_flags.append('`--thinking`')
-    flags_str = f'**Flags:** {", ".join(active_flags)}  ' if active_flags else '**Flags:** none  '
-    header += ['', flags_str, '*Token key: `Xin` = new input · `Xout` = output · `X↩` = cache read*', '', '***', '']
-
-    return '\n'.join(header + out)
+    if isinstance(out, list):
+        return '\n'.join(out)
+    return None
 
 
-def convert(jsonl_path, verbose=False, thinking=False):
+def convert(jsonl_path, verbose=False, thinking=False, tail=None, head=None):
     parsed = parse_session(jsonl_path)
-    return render_session(parsed, verbose=verbose, thinking=thinking)
+    return render_session(parsed, verbose=verbose, thinking=thinking, tail=tail, head=head)
+
+
+def convert_to_file(jsonl_path, file_handle, verbose=False, thinking=False, tail=None, head=None):
+    parsed = parse_session(jsonl_path)
+    render_session(parsed, verbose=verbose, thinking=thinking, tail=tail, head=head, out=file_handle)
 
 
 # ── List mode ────────────────────────────────────────────────────────────────
@@ -523,21 +582,19 @@ def list_sessions(directory):
 
 # ── Batch mode ───────────────────────────────────────────────────────────────
 
-def batch_convert(paths, verbose=False, thinking=False, to_stdout=False):
+def batch_convert(paths, verbose=False, thinking=False, tail=None, head=None, to_stdout=False):
     outputs = []
     for path in sorted(paths):
         try:
-            result = convert(path, verbose=verbose, thinking=thinking)
+            if to_stdout:
+                result = convert(path, verbose=verbose, thinking=thinking, tail=tail, head=head)
+                outputs.append(result)
+            else:
+                output_dir = os.path.join(os.path.dirname(path), 'output')
+                out_path = write_output(path, output_dir, verbose=verbose, thinking=thinking, tail=tail, head=head)
+                print(f'Written to {out_path}')
         except Exception as e:
             print(f'ERROR: {path}: {e}', file=sys.stderr)
-            continue
-        if to_stdout:
-            outputs.append(result)
-        else:
-            output_dir = os.path.join(os.path.dirname(path), 'output')
-            stem = os.path.splitext(os.path.basename(path))[0]
-            out_path = write_output(result, stem, output_dir)
-            print(f'Written to {out_path}')
     if to_stdout:
         print('\n\n---\n\n'.join(outputs))
 
@@ -558,6 +615,22 @@ def main():
     thinking  = '--thinking' in flags
     list_mode = '--list'     in flags
 
+    # Parse --tail N and --head N
+    tail = head = None
+    for flag in ('--tail', '--head'):
+        if flag in args:
+            idx = args.index(flag)
+            if idx + 1 < len(args):
+                try:
+                    val = int(args[idx + 1])
+                    if flag == '--tail':
+                        tail = val
+                    else:
+                        head = val
+                except ValueError:
+                    print(f'Error: {flag} requires an integer argument', file=sys.stderr)
+                    sys.exit(1)
+
     target = positional[0]
 
     # Directory mode
@@ -566,14 +639,14 @@ def main():
             list_sessions(target)
         else:
             paths = []
-            for root, _, files in os.walk(target):
+            for root, _, files in os.walk(target, followlinks=False):
                 for fname in files:
                     if fname.endswith('.jsonl'):
                         paths.append(os.path.join(root, fname))
             if not paths:
                 print(f'No .jsonl files found under {target}', file=sys.stderr)
                 sys.exit(1)
-            batch_convert(paths, verbose=verbose, thinking=thinking, to_stdout=to_stdout)
+            batch_convert(paths, verbose=verbose, thinking=thinking, tail=tail, head=head, to_stdout=to_stdout)
         return
 
     # Glob pattern
@@ -582,17 +655,16 @@ def main():
         if not paths:
             print(f'No .jsonl files matched: {target}', file=sys.stderr)
             sys.exit(1)
-        batch_convert(paths, verbose=verbose, thinking=thinking, to_stdout=to_stdout)
+        batch_convert(paths, verbose=verbose, thinking=thinking, tail=tail, head=head, to_stdout=to_stdout)
         return
 
     # Single file
-    result = convert(target, verbose=verbose, thinking=thinking)
     if to_stdout:
+        result = convert(target, verbose=verbose, thinking=thinking, tail=tail, head=head)
         print(result)
     else:
         output_dir = os.path.join(os.getcwd(), 'output')
-        stem = os.path.splitext(os.path.basename(target))[0]
-        out_path = write_output(result, stem, output_dir)
+        out_path = write_output(target, output_dir, verbose=verbose, thinking=thinking, tail=tail, head=head)
         print(f'Written to {out_path}')
 
 
