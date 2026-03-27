@@ -84,10 +84,42 @@ python3 reader.py ~/.claude/projects/-Users-you-myproject/abc123.jsonl --verbose
 
 By default, tool calls show the tool name and key inputs only. `--verbose` adds the full output of each tool call (truncated at 1000 characters if very long). Useful when you need to see exactly what Claude read or executed.
 
+### Include thinking blocks
+
+```bash
+python3 reader.py abc123.jsonl --thinking
+```
+
+Shows Claude's internal reasoning blocks when present. In practice, Anthropic redacts thinking content before it's written to the JSONL — the block exists in the log but the text is empty. This means `--thinking` will almost always show `*(thinking redacted)*` rather than actual reasoning text.
+
+It's still useful: you can see **which turns Claude paused to think through**, even if you can't read the thoughts themselves. Actual thinking content would only appear if you were using extended thinking mode explicitly via the API.
+
+### Convert all sessions in a directory (batch mode)
+
+```bash
+python3 reader.py ~/.claude/projects/-Users-you-myproject/
+```
+
+Converts every `.jsonl` file found recursively. Each output file is written to an `output/` folder adjacent to its source file.
+
+### List all sessions in a directory
+
+```bash
+python3 reader.py ~/.claude/projects/ --list
+```
+
+Prints a table of all sessions found recursively — filename, date, duration, turn count, and tool call count. Useful for finding the session you want before converting it.
+
+### Use a glob pattern
+
+```bash
+python3 reader.py "~/.claude/projects/-Users-you-myproject/*.jsonl"
+```
+
 ### Combine flags
 
 ```bash
-python3 reader.py abc123.jsonl --verbose --stdout
+python3 reader.py abc123.jsonl --verbose --thinking --stdout
 ```
 
 ---
@@ -113,9 +145,19 @@ Each turn in the conversation looks like this:
 
 ---
 
-## What gets omitted
+## Output format
+
+Each session ends with a **Session Summary** table showing:
+- Duration, turn counts, tool call count
+- Token totals (input, output, cache read, cache write)
+- Estimated cost based on Sonnet 4.x pricing (rates are constants at the top of `reader.py` — edit them if they've changed or you're on a different model; verify at [anthropic.com/pricing](https://www.anthropic.com/pricing))
+- Tool call frequency breakdown (e.g. `Edit ×24, Bash ×18, Read ×11`)
+
+Turns containing tool errors are flagged with `**[!]**` in the turn header.
+
+## What gets omitted by default
 
 - Internal `file-history-snapshot` records
-- `thinking` blocks (Claude's internal reasoning)
+- `thinking` blocks (use `--thinking` to include)
 - Sidechain records
-- Raw tool result payloads (unless `--verbose`)
+- Raw tool result payloads (use `--verbose` to include)
