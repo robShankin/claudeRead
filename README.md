@@ -70,27 +70,27 @@ python3 reader.py ~/.claude/projects/-Users-you-myproject/abc123.jsonl
 
 Creates `output/abc123.md` in your current directory. The `output/` folder is created automatically if it doesn't exist. If the file already exists, it increments: `abc123-02.md`, `abc123-03.md`, etc.
 
-### Print to terminal
+### Print to terminal — **`--stdout`**
 
 ```bash
 python3 reader.py ~/.claude/projects/-Users-you-myproject/abc123.jsonl --stdout
 ```
 
-### Include full tool results (verbose mode)
+### Include full tool results — **`--verbose`**
 
 ```bash
 python3 reader.py ~/.claude/projects/-Users-you-myproject/abc123.jsonl --verbose
 ```
 
-By default, tool calls show the tool name and key inputs only. `--verbose` adds the full output of each tool call (truncated at 1000 characters if very long). Useful when you need to see exactly what Claude read or executed.
+By default, tool calls show the tool name and key inputs only. **`--verbose`** adds the full output of each tool call (truncated at 1000 characters if very long). Useful when you need to see exactly what Claude read or executed.
 
-### Include thinking blocks
+### Include thinking blocks — **`--thinking`**
 
 ```bash
 python3 reader.py abc123.jsonl --thinking
 ```
 
-Shows Claude's internal reasoning blocks when present. In practice, Anthropic redacts thinking content before it's written to the JSONL — the block exists in the log but the text is empty. This means `--thinking` will almost always show `*(thinking redacted)*` rather than actual reasoning text.
+Shows Claude's internal reasoning blocks when present. In practice, Anthropic redacts thinking content before it's written to the JSONL — the block exists in the log but the text is empty. This means **`--thinking`** will almost always show `*(thinking redacted)*` rather than actual reasoning text.
 
 It's still useful: you can see **which turns Claude paused to think through**, even if you can't read the thoughts themselves. Actual thinking content would only appear if you were using extended thinking mode explicitly via the API.
 
@@ -102,7 +102,7 @@ python3 reader.py ~/.claude/projects/-Users-you-myproject/
 
 Converts every `.jsonl` file found recursively. Each output file is written to an `output/` folder adjacent to its source file.
 
-### List all sessions in a directory
+### List all sessions in a directory — **`--list`**
 
 ```bash
 python3 reader.py ~/.claude/projects/ --list
@@ -116,7 +116,7 @@ Prints a table of all sessions found recursively — filename, date, duration, t
 python3 reader.py "~/.claude/projects/-Users-you-myproject/*.jsonl"
 ```
 
-### Limit output for large sessions
+### Limit output for large sessions — **`--tail`** / **`--head`**
 
 ```bash
 python3 reader.py abc123.jsonl --tail 20   # last 20 turns only
@@ -167,6 +167,6 @@ Turns containing tool errors are flagged with `**[!]**` in the turn header.
 ## What gets omitted by default
 
 - Internal `file-history-snapshot` records
-- `thinking` blocks (use `--thinking` to include)
+- `thinking` blocks (use **`--thinking`** to include)
 - Sidechain records
-- Raw tool result payloads (use `--verbose` to include)
+- Raw tool result payloads (use **`--verbose`** to include)
