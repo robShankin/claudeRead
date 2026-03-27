@@ -181,7 +181,7 @@ def convert(jsonl_path):
                 version = r.get('version')
 
             first, _, rest = text.partition('\n')
-            out.append('---')
+            out.append('***')
             out.append(f'**User** `{ts}` — {first}')
             if rest.strip():
                 out.append('')
@@ -217,7 +217,7 @@ def convert(jsonl_path):
                 c = usage.get('cache_read_input_tokens', 0)
                 token_str = f' · *{i}in/{o}out/{c}↩*'
 
-            out.append('---')
+            out.append('***')
             if text_parts:
                 first, _, rest = text_parts[0].partition('\n')
                 out.append(f'**Assistant** `{ts}` — {first}')
@@ -247,7 +247,7 @@ def convert(jsonl_path):
         header.append(f'**Working directory:** `{cwd}`  ')
     if version:
         header.append(f'**Claude Code version:** `{version}`  ')
-    header += ['', '---', '']
+    header += ['', '***', '']
 
     return '\n'.join(header + out)
 
@@ -266,13 +266,15 @@ def main():
         print(result)
     else:
         import os
+        output_dir = os.path.join(os.getcwd(), 'output')
+        os.makedirs(output_dir, exist_ok=True)
         stem = os.path.splitext(os.path.basename(jsonl_path))[0]
-        output_path = os.path.join(os.getcwd(), stem + '.md')
+        output_path = os.path.join(output_dir, stem + '.md')
         if os.path.exists(output_path):
             n = 2
-            while os.path.exists(os.path.join(os.getcwd(), f'{stem}-{n:02d}.md')):
+            while os.path.exists(os.path.join(output_dir, f'{stem}-{n:02d}.md')):
                 n += 1
-            output_path = os.path.join(os.getcwd(), f'{stem}-{n:02d}.md')
+            output_path = os.path.join(output_dir, f'{stem}-{n:02d}.md')
         with open(output_path, 'w') as f:
             f.write(result)
         print(f'Written to {output_path}')
