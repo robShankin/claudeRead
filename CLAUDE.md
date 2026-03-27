@@ -42,16 +42,21 @@ Tool interactions span two records:
 
 - **Language:** Python 3.7+ stdlib only — no dependencies, no install step
 - **Entry point:** `reader.py` — single file, runs as `python3 reader.py <file.jsonl>`
-- **Output:** Markdown to stdout, or a file via `-o output.md`
+- **Output:** Writes `output/<session>.md` by default; `--stdout` prints to terminal; `--verbose` includes full tool results
 
 ## Running
 
 ```bash
 python3 reader.py <session.jsonl>
-python3 reader.py <session.jsonl> -o output.md
+python3 reader.py <session.jsonl> --stdout
+python3 reader.py <session.jsonl> --verbose
 ```
 
 JSONL files live at `~/.claude/projects/<encoded-path>/<session-id>.jsonl`.
+
+## README
+
+`README.md` is the user-facing doc. After making any change to flags, output format, or behavior, check whether README.md still accurately describes what the tool does. The key sections to verify: **Usage** (flags and their effects), **Output format** (example output), and **What gets omitted**. If any of those are stale, update them.
 
 ## Design Constraints
 

@@ -3,8 +3,9 @@
 reader.py: Convert Claude Code JSONL session files to readable Markdown.
 
 Usage:
-    python3 reader.py <session.jsonl>          # writes <session>.md next to input
-    python3 reader.py <session.jsonl> --stdout  # prints to terminal instead
+    python3 reader.py <session.jsonl>                   # writes output/<session>.md
+    python3 reader.py <session.jsonl> --stdout          # prints to terminal instead
+    python3 reader.py <session.jsonl> --verbose         # includes full tool results
 
 No dependencies beyond Python 3.7+ stdlib.
 """
@@ -68,7 +69,24 @@ def format_ask_user_question(tool_input, tool_result):
     return '\n'.join(parts)
 
 
-def format_tool_call(tool_use, tool_results):
+def render_tool_result(result, max_chars=1000):
+    """Convert a tool result to a readable string, truncated if needed."""
+    if result is None:
+        return ''
+    if isinstance(result, str):
+        text = result
+    elif isinstance(result, dict):
+        text = json.dumps(result, indent=2)
+    elif isinstance(result, list):
+        text = json.dumps(result, indent=2)
+    else:
+        text = str(result)
+    if len(text) > max_chars:
+        text = text[:max_chars] + f'\n… ({len(text) - max_chars} chars truncated)'
+    return text
+
+
+def format_tool_call(tool_use, tool_results, verbose=False):
     """Format a generic tool_use block as inline text."""
     name = tool_use.get('name', 'Unknown')
     inp = tool_use.get('input', {})
@@ -87,9 +105,16 @@ def format_tool_call(tool_use, tool_results):
             summary_parts.append(f'{k}={v}')
     summary = ', '.join(summary_parts[:3])
 
+    line = f'**Tool: {name}**'
     if summary:
-        return f'**Tool: {name}** — {summary}'
-    return f'**Tool: {name}**'
+        line += f' — {summary}'
+
+    if verbose and result is not None:
+        result_text = render_tool_result(result)
+        if result_text:
+            line += f'\n\n```\n{result_text}\n```'
+
+    return line
 
 
 def strip_command_tags(text):
@@ -100,7 +125,7 @@ def strip_command_tags(text):
     return text.strip()
 
 
-def convert(jsonl_path):
+def convert(jsonl_path, verbose=False):
     # ── Load ────────────────────────────────────────────────────────────────
     raw = []
     with open(jsonl_path, 'r') as f:
@@ -204,7 +229,7 @@ def convert(jsonl_path):
                     if t:
                         text_parts.append(t)
                 elif btype == 'tool_use':
-                    tool_parts.append(format_tool_call(block, tool_results))
+                    tool_parts.append(format_tool_call(block, tool_results, verbose))
                 # 'thinking' blocks skipped in MVP
 
             if not text_parts and not tool_parts:
@@ -247,7 +272,7 @@ def convert(jsonl_path):
         header.append(f'**Working directory:** `{cwd}`  ')
     if version:
         header.append(f'**Claude Code version:** `{version}`  ')
-    header += ['', '***', '']
+    header += ['', '*Token key: `Xin` = new input · `Xout` = output · `X↩` = cache read*', '', '***', '']
 
     return '\n'.join(header + out)
 
@@ -259,8 +284,9 @@ def main():
 
     jsonl_path = sys.argv[1]
     to_stdout = '--stdout' in sys.argv
+    verbose = '--verbose' in sys.argv
 
-    result = convert(jsonl_path)
+    result = convert(jsonl_path, verbose=verbose)
 
     if to_stdout:
         print(result)
