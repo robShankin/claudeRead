@@ -263,10 +263,14 @@ def parse_session(jsonl_path):
     if skipped:
         print(f'Warning: {skipped} corrupt line(s) skipped in {os.path.basename(jsonl_path)}', file=sys.stderr)
 
-    records = [
+    non_sidechain = [
         r for r in raw
         if r.get('type') not in ('file-history-snapshot',)
         and not r.get('isSidechain', False)
+    ]
+    # If the entire file is a sidechain (e.g. an agent sublog), render it as-is
+    records = non_sidechain if non_sidechain else [
+        r for r in raw if r.get('type') not in ('file-history-snapshot',)
     ]
 
     # Deduplicate assistant records by message.id — keep last (most complete)

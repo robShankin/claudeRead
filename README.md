@@ -23,7 +23,7 @@ If you don't have Python 3, download it from [python.org](https://www.python.org
 
 1. Download or clone this repo:
 ```bash
-git clone https://github.com/your-username/clauderead.git
+git clone https://github.com/robShankin/clauderead.git
 cd clauderead
 ```
 
@@ -150,11 +150,7 @@ Each turn in the conversation looks like this:
 - **Bold name** + backtick timestamp — who spoke and when
 - Token counts at the end of each assistant turn: `in / out / cache-read↩` — a key is included at the top of every output file
 - Tool calls shown inline: tool name, key inputs, and (for interactive tools) the result
-- `--verbose` adds a fenced code block with the raw tool output beneath each tool call
-
----
-
-## Output format
+- **`--verbose`** adds a fenced code block with the raw tool output beneath each tool call
 
 Each session ends with a **Session Summary** table showing:
 - Duration, turn counts, tool call count
@@ -164,9 +160,17 @@ Each session ends with a **Session Summary** table showing:
 
 Turns containing tool errors are flagged with `**[!]**` in the turn header.
 
+## Agent sublogs
+
+Claude Code agent workflows (e.g. multi-agent tasks) generate sublog files where every record is marked as a sidechain. Without special handling, these files would produce empty output because the default filter strips sidechain records.
+
+`reader.py` detects this automatically: if filtering out sidechains would leave nothing to render, it falls back to rendering the full file. This means you can pass any `.jsonl` from your `projects/` directory — regular sessions and agent sublogs alike — and get readable output.
+
+---
+
 ## What gets omitted by default
 
 - Internal `file-history-snapshot` records
 - `thinking` blocks (use **`--thinking`** to include)
-- Sidechain records
+- Sidechain records in mixed files (agent sublog files are rendered in full — see above)
 - Raw tool result payloads (use **`--verbose`** to include)
