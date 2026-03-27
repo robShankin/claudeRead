@@ -198,11 +198,55 @@ def write_output(jsonl_path, output_dir, verbose=False, thinking=False, tail=Non
     return path
 
 
+# ── Conversation ordering ────────────────────────────────────────────────────
+
+def _order_by_parent_chain(records):
+    """Sort records by following the parentUuid linked list from root to leaf."""
+    children = {}
+    for r in records:
+        p = r.get('parentUuid')
+        children.setdefault(p, []).append(r)
+
+    ordered = []
+    visited = set()
+    # Start from root records (parentUuid is None or points to a uuid not in this set)
+    known_uuids = {r.get('uuid') for r in records}
+    roots = [
+        r for r in records
+        if r.get('parentUuid') is None or r.get('parentUuid') not in known_uuids
+    ]
+    queue = sorted(roots, key=lambda r: r.get('timestamp', ''))
+
+    while queue:
+        r = queue.pop(0)
+        uid = r.get('uuid')
+        if uid in visited:
+            continue
+        visited.add(uid)
+        ordered.append(r)
+        next_children = sorted(
+            children.get(uid, []),
+            key=lambda r: r.get('timestamp', '')
+        )
+        for child in next_children:
+            if child.get('uuid') not in visited:
+                queue.insert(0, child)
+
+    # Safety net: append anything not reached by the chain
+    reached = {r.get('uuid') for r in ordered}
+    for r in records:
+        if r.get('uuid') not in reached:
+            ordered.append(r)
+
+    return ordered
+
+
 # ── Core: parse ──────────────────────────────────────────────────────────────
 
 def parse_session(jsonl_path):
     """Load and parse a JSONL session file. Returns a structured dict."""
     raw = []
+    skipped = 0
     with open(jsonl_path, 'r', encoding='utf-8', errors='replace') as f:
         for line in f:
             line = line.strip()
@@ -211,7 +255,9 @@ def parse_session(jsonl_path):
             try:
                 raw.append(json.loads(line))
             except json.JSONDecodeError:
-                continue
+                skipped += 1
+    if skipped:
+        print(f'Warning: {skipped} corrupt line(s) skipped in {os.path.basename(jsonl_path)}', file=sys.stderr)
 
     records = [
         r for r in raw
@@ -231,6 +277,9 @@ def parse_session(jsonl_path):
                     continue
                 seen_msg_ids[msg_id] = len(deduped)
         deduped.append(r)
+
+    # Order by parentUuid chain (authoritative conversation order)
+    deduped = _order_by_parent_chain(deduped)
 
     # Build tool result map: tool_use_id -> {'value': ..., 'is_error': bool}
     tool_results = {}
@@ -602,9 +651,21 @@ def batch_convert(paths, verbose=False, thinking=False, tail=None, head=None, to
 # ── Entry point ──────────────────────────────────────────────────────────────
 
 def main():
-    args      = sys.argv[1:]
-    flags     = set(args)
-    positional = [a for a in args if not a.startswith('--')]
+    args  = sys.argv[1:]
+    flags = set(args)
+
+    # Track indices consumed as values by flags that take a numeric argument
+    consumed_value_indices = set()
+    for flag in ('--tail', '--head'):
+        if flag in args:
+            idx = args.index(flag)
+            if idx + 1 < len(args):
+                consumed_value_indices.add(idx + 1)
+
+    positional = [
+        a for i, a in enumerate(args)
+        if not a.startswith('--') and i not in consumed_value_indices
+    ]
 
     if not positional or '-h' in flags or '--help' in flags:
         print(__doc__)
@@ -623,12 +684,14 @@ def main():
             if idx + 1 < len(args):
                 try:
                     val = int(args[idx + 1])
+                    if val <= 0:
+                        raise ValueError
                     if flag == '--tail':
                         tail = val
                     else:
                         head = val
                 except ValueError:
-                    print(f'Error: {flag} requires an integer argument', file=sys.stderr)
+                    print(f'Error: {flag} requires a positive integer', file=sys.stderr)
                     sys.exit(1)
 
     target = positional[0]
