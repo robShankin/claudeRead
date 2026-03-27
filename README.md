@@ -1,62 +1,61 @@
 # clauderead
 
-Turn Claude Code session logs into readable conversation transcripts.
+> Turn Claude Code session logs into readable conversation transcripts.
 
-Claude Code saves every session as a `.jsonl` file full of raw JSON. This tool converts those files into clean, skimmable Markdown — useful for reading what happened in a session, sharing with a teammate, or passing to an AI agent for review.
+Claude Code saves every session as a `.jsonl` file packed with raw JSON. **clauderead** converts those files into clean, skimmable Markdown — ready to read, share with a teammate, or hand to an AI agent for review.
+
+---
+
+## Quick start
+
+```bash
+git clone https://github.com/robShankin/clauderead.git
+cd clauderead
+python3 reader.py ~/.claude/projects/-Users-you-myproject/abc123.jsonl
+```
+
+That's it. No install, no dependencies, no virtual environment — just Python 3.7+.
+
+Output lands in `output/abc123.md`. Run with `--stdout` to print to the terminal instead.
 
 ---
 
 ## Prerequisites
 
-- **Python 3.7 or newer** — no other dependencies, no packages to install
+**Python 3.7 or newer** — nothing else.
 
-To check your Python version:
 ```bash
 python3 --version
 ```
 
-If you don't have Python 3, download it from [python.org](https://www.python.org/downloads/).
-
----
-
-## Installation
-
-1. Download or clone this repo:
-```bash
-git clone https://github.com/robShankin/clauderead.git
-cd clauderead
-```
-
-2. That's it. There's nothing to install.
+No Python? Grab it at [python.org](https://www.python.org/downloads/).
 
 ---
 
 ## Finding your session files
 
-Claude Code stores session files in a `projects/` directory under its config folder. The location depends on your OS:
+Claude Code stores sessions here:
 
-**macOS / Linux:**
+| OS | Path |
+|----|------|
+| macOS / Linux | `~/.claude/projects/` |
+| Windows | `%USERPROFILE%\.claude\projects\` |
+
+Each project gets its own subfolder named after its path (slashes → dashes):
+
 ```
 ~/.claude/projects/
+  -Users-you-myproject/
+    abc123.jsonl        ← one file per session
+    def456.jsonl
 ```
 
-**Windows:**
-```
-%USERPROFILE%\.claude\projects\
-```
+> **Heads up:** `.claude` is a hidden directory. On macOS/Linux use `ls -a ~`; on Windows enable "Show hidden files" in Explorer.
 
-Within `projects/`, each project gets its own folder named after its file path (slashes replaced with dashes). For example, a project at `/Users/you/myproject` maps to:
-```
-~/.claude/projects/-Users-you-myproject/
-```
-
-Each `.jsonl` file in that folder is one session, named by its session ID (a UUID). Pass any of these files directly to `reader.py`.
-
-**A few things worth knowing:**
-- The `.claude` directory is hidden by default. On macOS/Linux use `ls -a ~` to see it; on Windows enable "Show hidden files" in Explorer.
-- There will be multiple `.jsonl` files per project — one per session, not one per project.
-- Logs are stored globally, not inside your git repo.
-- Anthropic has not guaranteed this path as permanent — the location or structure could change in future versions of Claude Code.
+A few things worth knowing:
+- One `.jsonl` per session, not per project — you may have many.
+- Logs live globally, not inside your git repo.
+- Anthropic hasn't committed to keeping this path stable — it could change in a future release.
 
 ---
 
@@ -68,33 +67,55 @@ Each `.jsonl` file in that folder is one session, named by its session ID (a UUI
 python3 reader.py ~/.claude/projects/-Users-you-myproject/abc123.jsonl
 ```
 
-Creates `output/abc123.md` in your current directory. The `output/` folder is created automatically if it doesn't exist. If the file already exists, it increments: `abc123-02.md`, `abc123-03.md`, etc.
+Creates `output/abc123.md` in your current directory. The `output/` folder is created automatically. Existing files are never overwritten — the name increments instead: `abc123-02.md`, `abc123-03.md`, etc.
 
-### Print to terminal — **`--stdout`**
+---
+
+### Flag reference
+
+| Flag | Effect |
+|------|--------|
+| `--stdout` | Print to terminal instead of writing a file |
+| `--verbose` | Include full tool output (truncated at 1000 chars) |
+| `--thinking` | Show Claude's thinking blocks (usually redacted — see note below) |
+| `--list` | List all sessions in a directory with metadata; don't convert |
+| `--tail N` | Show only the last N turns |
+| `--head N` | Show only the first N turns |
+
+Flags can be combined freely:
 
 ```bash
-python3 reader.py ~/.claude/projects/-Users-you-myproject/abc123.jsonl --stdout
+python3 reader.py abc123.jsonl --verbose --thinking --stdout
+python3 reader.py abc123.jsonl --tail 20 --stdout
 ```
 
-### Include full tool results — **`--verbose`**
+---
+
+### Print to terminal — `--stdout`
 
 ```bash
-python3 reader.py ~/.claude/projects/-Users-you-myproject/abc123.jsonl --verbose
+python3 reader.py abc123.jsonl --stdout
 ```
 
-By default, tool calls show the tool name and key inputs only. **`--verbose`** adds the full output of each tool call (truncated at 1000 characters if very long). Useful when you need to see exactly what Claude read or executed.
+### Include full tool results — `--verbose`
 
-### Include thinking blocks — **`--thinking`**
+```bash
+python3 reader.py abc123.jsonl --verbose
+```
+
+By default, tool calls show the tool name and key inputs only. `--verbose` adds the full output of each tool call beneath it in a fenced code block. Useful when you need to see exactly what Claude read or executed.
+
+### Include thinking blocks — `--thinking`
 
 ```bash
 python3 reader.py abc123.jsonl --thinking
 ```
 
-Shows Claude's internal reasoning blocks when present. In practice, Anthropic redacts thinking content before it's written to the JSONL — the block exists in the log but the text is empty. This means **`--thinking`** will almost always show `*(thinking redacted)*` rather than actual reasoning text.
+Shows Claude's internal reasoning blocks when present. In practice, Anthropic redacts thinking content before writing it to the JSONL — the block exists but the text is empty, so `--thinking` will almost always show `*(thinking redacted)*` rather than actual content.
 
-It's still useful: you can see **which turns Claude paused to think through**, even if you can't read the thoughts themselves. Actual thinking content would only appear if you were using extended thinking mode explicitly via the API.
+It's still useful: you can see **which turns Claude paused to think through**, even if you can't read the thoughts. Actual content only appears when extended thinking is enabled explicitly via the API.
 
-### Convert all sessions in a directory (batch mode)
+### Batch convert a directory
 
 ```bash
 python3 reader.py ~/.claude/projects/-Users-you-myproject/
@@ -102,13 +123,13 @@ python3 reader.py ~/.claude/projects/-Users-you-myproject/
 
 Converts every `.jsonl` file found recursively. Each output file is written to an `output/` folder adjacent to its source file.
 
-### List all sessions in a directory — **`--list`**
+### List sessions before converting — `--list`
 
 ```bash
 python3 reader.py ~/.claude/projects/ --list
 ```
 
-Prints a table of all sessions found recursively — filename, date, duration, turn count, and tool call count. Useful for finding the session you want before converting it.
+Prints a table of every session found — filename, date, duration, turn count, and tool call count. Handy for finding the session you want before committing to a conversion.
 
 ### Use a glob pattern
 
@@ -116,26 +137,20 @@ Prints a table of all sessions found recursively — filename, date, duration, t
 python3 reader.py "~/.claude/projects/-Users-you-myproject/*.jsonl"
 ```
 
-### Limit output for large sessions — **`--tail`** / **`--head`**
+### Limit output for large sessions — `--tail` / `--head`
 
 ```bash
-python3 reader.py abc123.jsonl --tail 20   # last 20 turns only
-python3 reader.py abc123.jsonl --head 20   # first 20 turns only
+python3 reader.py abc123.jsonl --tail 20   # last 20 turns
+python3 reader.py abc123.jsonl --head 20   # first 20 turns
 ```
 
-Useful when a session is very long. The output file will include a note showing how many turns were omitted. Token totals and cost in the summary still reflect the **full session**, not just the visible turns.
-
-### Combine flags
-
-```bash
-python3 reader.py abc123.jsonl --verbose --thinking --stdout
-```
+The output includes a note showing how many turns were omitted. Token totals and cost in the summary still reflect the **full session**, not just the visible turns.
 
 ---
 
 ## Output format
 
-Each turn in the conversation looks like this:
+Each turn looks like this:
 
 ```
 ***
@@ -148,29 +163,36 @@ Each turn in the conversation looks like this:
 
 - `***` — turn divider
 - **Bold name** + backtick timestamp — who spoke and when
-- Token counts at the end of each assistant turn: `in / out / cache-read↩` — a key is included at the top of every output file
+- Token counts at the end of each assistant turn (`in / out / cache-read↩`) — a key is included at the top of every output file
 - Tool calls shown inline: tool name, key inputs, and (for interactive tools) the result
-- **`--verbose`** adds a fenced code block with the raw tool output beneath each tool call
+- `--verbose` adds a fenced code block with the raw tool output beneath each call
+- Turns containing tool errors are flagged with `**[!]**` in the header
 
-Each session ends with a **Session Summary** table showing:
-- Duration, turn counts, tool call count
-- Token totals (input, output, cache read, cache write)
-- Estimated cost based on Sonnet 4.x pricing (rates are constants at the top of `reader.py` — edit them if they've changed or you're on a different model; verify at [anthropic.com/pricing](https://www.anthropic.com/pricing))
-- Tool call frequency breakdown (e.g. `Edit ×24, Bash ×18, Read ×11`)
+Each session ends with a **Session Summary** table:
 
-Turns containing tool errors are flagged with `**[!]**` in the turn header.
+| Field | What it shows |
+|-------|---------------|
+| Duration | Wall-clock time from first to last turn |
+| Turns | User turns / assistant turns |
+| Tool calls | Total count + frequency breakdown (e.g. `Edit ×24, Bash ×18`) |
+| Tokens | Input, output, cache read, cache write |
+| Estimated cost | Based on Sonnet 4.x pricing — rates are constants at the top of `reader.py`; edit them if they've changed or you're on a different model. Verify current rates at [anthropic.com/pricing](https://www.anthropic.com/pricing) |
+
+---
 
 ## Agent sublogs
 
-Claude Code agent workflows (e.g. multi-agent tasks) generate sublog files where every record is marked as a sidechain. Without special handling, these files would produce empty output because the default filter strips sidechain records.
+Claude Code agent workflows generate sublog files where every record is marked as a sidechain. Without special handling, these files produce empty output because the normal filter strips sidechain records.
 
-`reader.py` detects this automatically: if filtering out sidechains would leave nothing to render, it falls back to rendering the full file. This means you can pass any `.jsonl` from your `projects/` directory — regular sessions and agent sublogs alike — and get readable output.
+**clauderead detects this automatically.** If filtering sidechains would leave nothing to render, it falls back to rendering the full file. You can point it at any `.jsonl` in your `projects/` directory — regular sessions and agent sublogs alike — and get readable output.
 
 ---
 
 ## What gets omitted by default
 
-- Internal `file-history-snapshot` records
-- `thinking` blocks (use **`--thinking`** to include)
-- Sidechain records in mixed files (agent sublog files are rendered in full — see above)
-- Raw tool result payloads (use **`--verbose`** to include)
+| Omitted | How to include |
+|---------|----------------|
+| `file-history-snapshot` records | Not includable — internal bookkeeping only |
+| `thinking` blocks | `--thinking` |
+| Sidechain records (in mixed files) | Not needed — agent sublog files are rendered in full automatically |
+| Raw tool result payloads | `--verbose` |
